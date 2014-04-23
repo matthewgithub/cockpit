@@ -203,7 +203,11 @@ verify_knownhost (CockpitSshData *data)
         }
       else
         {
-          g_message ("%s: host key did not match expected", data->logname);
+          /* A empty expect_key is used by the frontend to force
+             failure.  Don't warn about it.
+          */
+          if (data->expect_key[0])
+            g_message ("%s: host key did not match expected", data->logname);
         }
     }
   else
