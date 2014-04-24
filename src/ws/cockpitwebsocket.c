@@ -203,7 +203,8 @@ static CockpitSession *
 cockpit_session_track (CockpitSessions *sessions,
                        const gchar *host,
                        const gchar *user,
-                       CockpitTransport *transport)
+                       CockpitTransport *transport,
+                       gboolean track_host_user)
 {
   CockpitSession *session;
 
@@ -215,7 +216,8 @@ cockpit_session_track (CockpitSessions *sessions,
   session->key.host = g_strdup (host);
   session->key.user = g_strdup (user);
 
-  g_hash_table_insert (sessions->by_host_user, &session->key, session);
+  if (track_host_user)
+    g_hash_table_insert (sessions->by_host_user, &session->key, session);
 
   /* This owns the session */
   g_hash_table_insert (sessions->by_transport, transport, session);
@@ -498,6 +500,7 @@ process_open (WebSocketData *data,
   const gchar *user;
   const gchar *host;
   const gchar *host_key;
+  gboolean reuse_user_session;
 
   if (data->closing)
     {
@@ -530,7 +533,17 @@ process_open (WebSocketData *data,
   if (!cockpit_json_get_string (options, "host-key", NULL, &host_key))
     host_key = NULL;
 
-  session = cockpit_session_by_host_user (&data->sessions, host, user);
+  /* We never reuse sessions when user/password or host key was
+     specified explicitly because that would ignore the password and
+     host key.
+  */
+  reuse_user_session = (creds != NULL && host_key == NULL);
+
+  if (reuse_user_session)
+    session = cockpit_session_by_host_user (&data->sessions, host, user);
+  else
+    session = NULL;
+
   if (!session)
     {
       /* Used during testing */
@@ -562,7 +575,7 @@ process_open (WebSocketData *data,
 
       g_signal_connect (transport, "recv", G_CALLBACK (on_session_recv), data);
       g_signal_connect (transport, "closed", G_CALLBACK (on_session_closed), data);
-      session = cockpit_session_track (&data->sessions, host, user, transport);
+      session = cockpit_session_track (&data->sessions, host, user, transport, reuse_user_session);
       g_object_unref (transport);
     }
 
