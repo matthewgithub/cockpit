@@ -47,6 +47,7 @@
   <interface name="com.redhat.Cockpit.Machine">
     <property name="Address" type="s" access="read"/>
     <property name="Tags" type="as" access="read"/>
+    <property name="HostKey" type="s" access="read"/>
     <method name="AddTag">
       <arg name="tag" type="s" direction="in"/>
     </method>

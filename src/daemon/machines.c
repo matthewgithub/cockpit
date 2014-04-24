@@ -90,10 +90,29 @@ machines_write_inlock (Machines *machines, GError **error)
   for (int i = 0; i < machines->machines->len; i++)
     machine_write (g_array_index (machines->machines, Machine *, i), file);
 
-  gs_free gchar *data = g_key_file_to_data (file, NULL, NULL);
+  gs_free gchar *machines_data = g_key_file_to_data (file, NULL, NULL);
   g_key_file_free (file);
 
-  return g_file_set_contents (machines->machines_file, data, -1, error);
+  if (!g_file_set_contents (machines->machines_file, machines_data, -1, error))
+    return FALSE;
+
+  GString *known_hosts_data = g_string_new ("");
+  for (int i = 0; i < machines->machines->len; i++) {
+    Machine *m = g_array_index (machines->machines, Machine *, i);
+    const gchar *host_key = cockpit_machine_get_host_key (COCKPIT_MACHINE (m));
+    if (host_key && host_key[0]) {
+      g_string_append (known_hosts_data, host_key);
+      g_string_append_c (known_hosts_data, '\n');
+    }
+  }
+
+  if (!g_file_set_contents (machines->known_hosts, known_hosts_data->str, known_hosts_data->len, error)) {
+    g_string_free (known_hosts_data, TRUE);
+    return FALSE;
+  }
+
+  g_string_free (known_hosts_data, TRUE);
+  return TRUE;
 }
 
 gboolean
@@ -287,49 +306,6 @@ machines_new (GDBusObjectManagerServer *object_manager)
 
 /* ---------------------------------------------------------------------------------------------------- */
 
-static gboolean
-update_known_hosts_inlock (Machines *machines,
-                           const gchar *address,
-                           const gchar *host_key,
-                           GError **error)
-{
-  GError *local_error = NULL;
-  gsize length = 0;
-  gchar *contents;
-  gchar *updated;
-  gchar *sep = "";
-
-  /* Read in the known hosts file */
-  if (!g_file_get_contents (machines->known_hosts, &contents, &length, &local_error))
-    {
-      if (!g_error_matches (local_error, G_FILE_ERROR, G_FILE_ERROR_NOENT))
-        {
-          g_propagate_error (error, local_error);
-          return FALSE;
-        }
-      g_clear_error (&local_error);
-    }
-
-  if (length && contents[length - 1] != '\n')
-    sep = "\n";
-
-  /* Write out updated known hosts file */
-  updated = g_strdup_printf ("%s%s%s\n", contents ? contents : "",
-                             sep, host_key);
-  g_free (contents);
-
-  g_file_set_contents (machines->known_hosts, updated, -1, &local_error);
-  g_free (updated);
-
-  if (local_error)
-    {
-      g_propagate_error (error, local_error);
-      return FALSE;
-    }
-
-  return TRUE;
-}
-
 static Machine *
 machines_add (Machines *machines,
               const gchar *address,
@@ -340,22 +316,21 @@ machines_add (Machines *machines,
 
   g_mutex_lock (&machines->lock);
 
-  if (host_key && host_key[0])
-    {
-      if (!update_known_hosts_inlock (machines, address, host_key, error))
-        goto out;
-    }
-
-  /* Do we already have this machine? */
   for (int i = 0; i < machines->machines->len; i++)
     {
-      machine = g_array_index (machines->machines, Machine *, i);
-      if (g_strcmp0 (cockpit_machine_get_address (COCKPIT_MACHINE (machine)), address) == 0)
-        goto out;
+      Machine *m = g_array_index (machines->machines, Machine *, i);
+      if (g_strcmp0 (cockpit_machine_get_address (COCKPIT_MACHINE (m)), address) == 0)
+        {
+          machine = m;
+          break;
+        }
     }
 
-  machine = machines_new_machine (machines);
+  if (machine == NULL)
+    machine = machines_new_machine (machines);
+
   cockpit_machine_set_address (COCKPIT_MACHINE (machine), address);
+  cockpit_machine_set_host_key (COCKPIT_MACHINE (machine), host_key);
   machine_export (machine, machines->object_manager);
 
   if (!machines_write_inlock (machines, error))
@@ -364,7 +339,6 @@ machines_add (Machines *machines,
       g_clear_error (error);
     }
 
- out:
   g_mutex_unlock (&machines->lock);
   return machine;
 }

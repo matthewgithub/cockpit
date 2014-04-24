@@ -159,7 +159,7 @@ test_new_known_hosts (TestCase *tc,
 
   g_assert (g_unlink (tc->known_hosts) == 0);
 
-  cockpit_machines_call_add (tc->proxy, "blah", "ssh-rsa xxxxyyyyzzzz", NULL, on_ready_get_result, &result);
+  cockpit_machines_call_add (tc->proxy, "blah", "blah ssh-rsa xxxxyyyyzzzz", NULL, on_ready_get_result, &result);
   while (result == NULL)
     g_main_context_iteration (NULL, TRUE);
   cockpit_machines_call_add_finish (tc->proxy, &path, result, &error);
@@ -172,34 +172,6 @@ test_new_known_hosts (TestCase *tc,
   g_file_get_contents (tc->known_hosts, &contents, NULL, &error);
   g_assert_no_error (error);
   g_assert_cmpstr (contents, ==, "blah ssh-rsa xxxxyyyyzzzz\n");
-  g_free (contents);
-}
-
-static void
-test_append_known_hosts (TestCase *tc,
-                         gconstpointer data)
-{
-  GAsyncResult *result = NULL;
-  GError *error = NULL;
-  gchar *contents;
-  gchar *path;
-
-  g_file_set_contents (tc->known_hosts, "# comment", -1, &error);
-  g_assert_no_error (error);
-
-  cockpit_machines_call_add (tc->proxy, "blah", "ssh-rsa xxxxyyyyzzzz", NULL, on_ready_get_result, &result);
-  while (result == NULL)
-    g_main_context_iteration (NULL, TRUE);
-  cockpit_machines_call_add_finish (tc->proxy, &path, result, &error);
-  g_object_unref (result);
-  g_assert_no_error (error);
-
-  g_assert_cmpstr (path, !=, "/");
-  g_free (path);
-
-  g_file_get_contents (tc->known_hosts, &contents, NULL, &error);
-  g_assert_no_error (error);
-  g_assert_cmpstr (contents, ==, "# comment\nblah ssh-rsa xxxxyyyyzzzz\n");
   g_free (contents);
 }
 
@@ -216,8 +188,6 @@ main (int argc,
               setup, test_add, teardown);
   g_test_add ("/machines/new-known-hosts", TestCase, NULL,
               setup, test_new_known_hosts, teardown);
-  g_test_add ("/machines/append-known-hosts", TestCase, NULL,
-              setup, test_append_known_hosts, teardown);
 
   return g_test_run ();
 }

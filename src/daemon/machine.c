@@ -111,6 +111,9 @@ machine_read (Machine *machine, GKeyFile *file, const gchar *group)
 
   gs_strfreev gchar **tags = g_key_file_get_string_list (file, group, "tags", NULL, NULL);
   cockpit_machine_set_tags (COCKPIT_MACHINE (machine), (const gchar *const *)tags);
+
+  gs_free gchar *host_key = g_key_file_get_string (file, group, "hostkey", NULL);
+  cockpit_machine_set_host_key (COCKPIT_MACHINE (machine), host_key? host_key : "");
 }
 
 void
@@ -121,6 +124,10 @@ machine_write (Machine *machine, GKeyFile *file)
 
   const gchar *const *tags = cockpit_machine_get_tags (COCKPIT_MACHINE (machine));
   g_key_file_set_string_list (file, machine->id, "tags", tags, count_tags(tags));
+
+  const gchar *host_key = cockpit_machine_get_host_key (COCKPIT_MACHINE (machine));
+  if (host_key && host_key[0])
+    g_key_file_set_string (file, machine->id, "hostkey", host_key);
 }
 
 void
