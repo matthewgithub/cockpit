@@ -309,7 +309,6 @@ machines_new (GDBusObjectManagerServer *object_manager)
 static Machine *
 machines_add (Machines *machines,
               const gchar *address,
-              const gchar *host_key,
               GError **error)
 {
   Machine *machine = NULL;
@@ -318,19 +317,13 @@ machines_add (Machines *machines,
 
   for (int i = 0; i < machines->machines->len; i++)
     {
-      Machine *m = g_array_index (machines->machines, Machine *, i);
-      if (g_strcmp0 (cockpit_machine_get_address (COCKPIT_MACHINE (m)), address) == 0)
-        {
-          machine = m;
-          break;
-        }
+      machine = g_array_index (machines->machines, Machine *, i);
+      if (g_strcmp0 (cockpit_machine_get_address (COCKPIT_MACHINE (machine)), address) == 0)
+        goto done;
     }
 
-  if (machine == NULL)
-    machine = machines_new_machine (machines);
-
+  machine = machines_new_machine (machines);
   cockpit_machine_set_address (COCKPIT_MACHINE (machine), address);
-  cockpit_machine_set_host_key (COCKPIT_MACHINE (machine), host_key);
   machine_export (machine, machines->object_manager);
 
   if (!machines_write_inlock (machines, error))
@@ -339,6 +332,7 @@ machines_add (Machines *machines,
       g_clear_error (error);
     }
 
+ done:
   g_mutex_unlock (&machines->lock);
   return machine;
 }
@@ -348,14 +342,13 @@ machines_add (Machines *machines,
 static gboolean
 handle_add (CockpitMachines *object,
             GDBusMethodInvocation *invocation,
-            const gchar *arg_address,
-            const gchar *arg_host_key)
+            const gchar *arg_address)
 {
   GError *error = NULL;
   Machines *machines = MACHINES (object);
   Machine *machine;
 
-  machine = machines_add (machines, arg_address, arg_host_key, &error);
+  machine = machines_add (machines, arg_address, &error);
   if (machine)
     {
       GDBusObject *obj = g_dbus_interface_get_object (G_DBUS_INTERFACE (machine));

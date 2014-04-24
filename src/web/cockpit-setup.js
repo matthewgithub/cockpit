@@ -212,10 +212,27 @@ PageSetupServer.prototype = {
 
         reuse_creds = $('#dashboard_setup_address_reuse_creds').prop('checked');
 
-        if (!reuse_creds)
-            me.show_tab('login');
-        else
-            me.connect_server();
+        var machines = cockpit_dbus_local_client.lookup ("/com/redhat/Cockpit/Machines",
+                                                         "com.redhat.Cockpit.Machines");
+        machines.call('Add', me.address, function (error, path) {
+            if (error) {
+                $('#dashboard_setup_address_error').text(error.message);
+                me.show_tab('address');
+                return;
+            }
+
+            me.machine = cockpit_dbus_local_client.lookup (path, "com.redhat.Cockpit.Machine");
+            if (!me.machine) {
+                $('#dashboard_setup_address_error').text(_("New machine not found in list after adding."));
+                me.show_tab('address');
+                return;
+            }
+
+            if (!reuse_creds)
+                me.show_tab('login');
+            else
+                me.connect_server();
+        });
     },
 
     next_login: function() {
@@ -440,36 +457,19 @@ PageSetupServer.prototype = {
     next_setup: function() {
         var me = this;
 
-        /* We can only add the machine to the list of known machines
-         * here since doing so also stores its key as 'known good',
-         * and we need the users permission for this.
-         *
-         * TODO: Add a method to set only the key and use it here.
-         */
-
-        var machines = cockpit_dbus_local_client.lookup ("/com/redhat/Cockpit/Machines",
-                                                         "com.redhat.Cockpit.Machines");
-        machines.call('Add', me.address, me.options["host-key"], function (error, path) {
+        me.machine.call('SetHostKey', me.options["host-key"], function (error) {
             if (error) {
-                $('#dashboard_setup_address_error').text(error.message);
-                me.show_tab('address');
-                return;
-            }
-
-            me.machine = cockpit_dbus_local_client.lookup (path, "com.redhat.Cockpit.Machine");
-            if (!me.machine) {
-                $('#dashboard_setup_address_error').text(_("New machine not found in list after adding."));
-                me.show_tab('address');
-                return;
-            }
-
-            me.run_tasks (function () {
-                me.machine.call('AddTag', "dashboard", function (error) {
-                    if (error)
-                        cockpit_show_unexpected_error(error);
-                    me.show_tab ('close');
+                me.show_tab ('close');
+                cockpit_show_unexpected_error(error);
+            } else {
+                me.run_tasks (function () {
+                    me.machine.call('AddTag', "dashboard", function (error) {
+                        me.show_tab ('close');
+                        if (error)
+                            cockpit_show_unexpected_error(error);
+                    });
                 });
-            });
+            }
         });
     },
 

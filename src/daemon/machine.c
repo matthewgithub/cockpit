@@ -325,6 +325,26 @@ handle_remove_tag (CockpitMachine *object,
   return TRUE;
 }
 
+static gboolean
+handle_set_host_key (CockpitMachine *object,
+                     GDBusMethodInvocation *invocation,
+                     const gchar *host_key)
+{
+  GError *error = NULL;
+  Machine *machine = MACHINE (object);
+
+  cockpit_machine_set_host_key (object, host_key);
+
+  if (!machines_write (machine->machines, &error))
+    {
+      g_dbus_method_invocation_take_error (invocation, error);
+      return TRUE;
+    }
+
+  cockpit_machine_complete_set_host_key (object, invocation);
+  return TRUE;
+}
+
 /* ---------------------------------------------------------------------------------------------------- */
 
 static void
@@ -332,4 +352,5 @@ machine_iface_init (CockpitMachineIface *iface)
 {
   iface->handle_add_tag = handle_add_tag;
   iface->handle_remove_tag = handle_remove_tag;
+  iface->handle_set_host_key = handle_set_host_key;
 }

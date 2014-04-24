@@ -132,7 +132,7 @@ test_add (TestCase *tc,
   gchar *contents;
   gchar *path;
 
-  cockpit_machines_call_add (tc->proxy, "blah", "", NULL, on_ready_get_result, &result);
+  cockpit_machines_call_add (tc->proxy, "blah", NULL, on_ready_get_result, &result);
   while (result == NULL)
     g_main_context_iteration (NULL, TRUE);
   cockpit_machines_call_add_finish (tc->proxy, &path, result, &error);
@@ -152,14 +152,16 @@ static void
 test_new_known_hosts (TestCase *tc,
                       gconstpointer data)
 {
-  GAsyncResult *result = NULL;
+  GAsyncResult *result;
   GError *error = NULL;
   gchar *contents;
   gchar *path;
+  CockpitMachine *machine;
 
   g_assert (g_unlink (tc->known_hosts) == 0);
 
-  cockpit_machines_call_add (tc->proxy, "blah", "blah ssh-rsa xxxxyyyyzzzz", NULL, on_ready_get_result, &result);
+  result = NULL;
+  cockpit_machines_call_add (tc->proxy, "blah", NULL, on_ready_get_result, &result);
   while (result == NULL)
     g_main_context_iteration (NULL, TRUE);
   cockpit_machines_call_add_finish (tc->proxy, &path, result, &error);
@@ -167,11 +169,31 @@ test_new_known_hosts (TestCase *tc,
   g_assert_no_error (error);
 
   g_assert_cmpstr (path, !=, "/");
+
+  result = NULL;
+  cockpit_machine_proxy_new (tc->connection, G_DBUS_PROXY_FLAGS_DO_NOT_AUTO_START,
+                             g_dbus_connection_get_unique_name (tc->connection),
+                             path, NULL, on_ready_get_result, &result);
+  while (result == NULL)
+    g_main_context_iteration (NULL, TRUE);
+  machine = cockpit_machine_proxy_new_finish (result, &error);
+  g_object_unref (result);
+  g_assert_no_error (error);
+
+  result = NULL;
+  cockpit_machine_call_set_host_key (machine, "blah type ABCDEFG", NULL, on_ready_get_result, &result);
+  while (result == NULL)
+    g_main_context_iteration (NULL, TRUE);
+  cockpit_machine_call_set_host_key_finish (machine, result, &error);
+  g_object_unref (result);
+  g_assert_no_error (error);
+
+  g_object_unref (machine);
   g_free (path);
 
   g_file_get_contents (tc->known_hosts, &contents, NULL, &error);
   g_assert_no_error (error);
-  g_assert_cmpstr (contents, ==, "blah ssh-rsa xxxxyyyyzzzz\n");
+  g_assert_cmpstr (contents, ==, "blah type ABCDEFG\n");
   g_free (contents);
 }
 
